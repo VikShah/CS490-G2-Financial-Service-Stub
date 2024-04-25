@@ -37,7 +37,7 @@ def assignCreditScore():
                     FROM account_info 
                     WHERE account_id = %s"""
         cursor.execute(query, ([account_id]))
-        results = cursor.fetchall()
+        results = cursor.fetchall()         
         if results:
             return jsonify(results), 200
     #If user has no credit score, assign them one randomly and return it
@@ -48,6 +48,41 @@ def assignCreditScore():
         cursor.execute(query, (account_id,u_credit_score))
         db.commit()
     return jsonify(u_credit_score)
+
+@app.route("/addNewCard", methods=['POST'])
+def addNewCard():
+    db = pymysql.connect(host=HOST, user=USER, password=PASSWORD, db=DB)
+    data = request.get_json()
+    #See if card is already in database
+    user_id = data.get("user_id")
+    card_number = str(data.get("card_number"))
+    card_number = card_number.replace("-","").replace(" ","")
+    account_id = "100" + str(user_id)
+    with db.cursor() as cursor:
+        query = """SELECT card_number  
+                    FROM card_account 
+                    WHERE account_id = %s"""
+        cursor.execute(query, ([account_id]))
+        results = cursor.fetchall()         
+        if results and results[0][0] == card_number:
+            response = {
+                'message': 'Card already exists'
+            }
+            return jsonify(response), 200   
+    #If card is not already in database, enter it in. 
+    security_code = data.get("security_code")
+    with db.cursor() as cursor:
+                query = """INSERT INTO card_account (card_number,account_id) values (%s,%s)"""
+                cursor.execute(query, (card_number,account_id))
+                db.commit()
+    with db.cursor() as cursor:
+                query = """INSERT INTO card_info (card_number,security_code) values (%s,%s)"""
+                cursor.execute(query, (card_number,security_code))
+                db.commit()
+    response = {
+        'message': 'Card information sucessfully added to database'
+    }
+    return jsonify(response)
 
 
 if __name__ == "__main__":
