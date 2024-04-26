@@ -84,6 +84,43 @@ def addNewCard():
     }
     return jsonify(response)
 
+@app.route("/addLoan", methods=['POST'])
+def addLoan():
+    db = pymysql.connect(host=HOST, user=USER, password=PASSWORD, db=DB)
+    data = request.get_json()
+    user_id = data.get("user_id")
+    account_id = "100" + str(user_id)   
+    #User gets new loan added to the database add it to database.
+   
+    #This is the total sum of the loan, the total of all the monthly payments after however many months 
+    loan_amount = data.get("loan_amount")
+    monthly_amount = data.get("monthly_amount") #how much the customer would pay each month
+
+    with db.cursor() as cursor:
+                query = """INSERT INTO loans (loan_amount,payment_sum,monthly_amount) values (%s,00.00,%s)"""
+                cursor.execute(query, (loan_amount,monthly_amount))
+                db.commit()
+    response = {
+        'message': 'New loan added for user'
+    }
+    return jsonify(response)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5005)
+
+@app.route("/updateAllPayments", methods=['GET'])
+def updateAllPayments():
+    db = pymysql.connect(host=HOST, user=USER, password=PASSWORD, db=DB)
+    with db.cursor() as cursor:
+        query = """
+        Select loan_id, monthly_amount FROM loans WHERE payment_sum < loan_amount and DATEDIFF(day, update_date, NOW()) >= 30;
+        """
+        cursor.execute(query)
+        results = cursor.fetchall()
+        for result in result: 
+            query2 = """
+            INSERT INTO payments (payment_amount,payment_date,loan_id,update_date) 
+            values (%s,NOW(),%s,NOW())
+            """
+            cursor.execute(query, (result[1],result[0]))
+            db.commit()
