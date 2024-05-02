@@ -54,16 +54,17 @@ def check_credit_score():
     finally:
         connection.close()
 
-@app.route('/verify_or_create_user', methods=['POST'])
-def verify_or_create_user():
+@app.route('/create_or_update_account', methods=['POST'])
+def create_or_update_account():
     data = request.json
     ssn = data.get('ssn')
     full_name = data.get('full_name')
     routing_number = data.get('routing_number')
     account_number = data.get('account_number')
+    bank_name = data.get('bank_name')  # Receive bank name from the request
 
     # Validate input format
-    if not ssn or not full_name or not routing_number or not account_number:
+    if not ssn or not full_name or not routing_number or not account_number or not bank_name:
         return jsonify({"error": "All fields are required"}), 400
     if not re.match(r'^\d{3}-\d{2}-\d{4}$', ssn):
         return jsonify({"error": "Invalid SSN format"}), 400
@@ -72,27 +73,31 @@ def verify_or_create_user():
         connection = get_db_connection()
         with connection.cursor() as cursor:
             # Check if the user exists
-            cursor.execute("""
-                SELECT user_id, full_name FROM users
-                WHERE ssn = %s
-            """, (ssn,))
+            cursor.execute("SELECT user_id FROM users WHERE ssn = %s", (ssn,))
             user = cursor.fetchone()
 
-            if user:
-                # Check if the existing user's full name matches the provided full name
-                if user['full_name'] != full_name:
-                    return jsonify({"error": "Full name does not match the provided SSN"}), 400
-                return jsonify({"result": True})
+            if not user:
+                # Create new user with a random credit score
+                new_credit_score = random.randint(300, 850)
+                cursor.execute("""
+                    INSERT INTO users (ssn, full_name, credit_score, last_request_date)
+                    VALUES (%s, %s, %s, NOW())
+                """, (ssn, full_name, new_credit_score))
+                user_id = cursor.lastrowid
+            else:
+                user_id = user['user_id']
 
-            # If user does not exist, create a new user with a random credit score
-            new_credit_score = random.randint(300, 850)
+            # Insert or update bank account information
             cursor.execute("""
-                INSERT INTO users (ssn, full_name, credit_score, last_request_date)
-                VALUES (%s, %s, %s, NOW())
-            """, (ssn, full_name, new_credit_score))
+                INSERT INTO bank_accounts (user_id, routing_number, account_number, bank_name)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE 
+                    routing_number = VALUES(routing_number),
+                    bank_name = VALUES(bank_name)
+            """, (user_id, routing_number, account_number, bank_name))
             connection.commit()
 
-            return jsonify({"result": True, "credit_score": new_credit_score})
+            return jsonify({"result": True, "user_id": user_id, "message": "Account created or updated successfully"})
 
     except Exception as e:
         connection.rollback()
