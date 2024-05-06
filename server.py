@@ -12,8 +12,8 @@ CORS(app)
 db_config = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'Ball9963@@##',
-    'db': 'f_stub',
+    'password': '',
+    'db': '',
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
 }
@@ -92,8 +92,10 @@ def create_or_update_account():
     bank_name = data.get('bank_name')
 
     if not (ssn and full_name and routing_number and account_number and bank_name):
+        print(ssn+' '+full_name)
         return jsonify({"error": "All fields are required"}), 400
     if not re.match(r'^\d{3}-\d{2}-\d{4}$', ssn):
+        print(ssn)
         return jsonify({"error": "Invalid SSN format"}), 400
 
     connection = get_db_connection()
@@ -104,6 +106,7 @@ def create_or_update_account():
 
             if user:
                 if user['full_name'] != full_name:
+                    print(user["full_name"])
                     return jsonify({"error": "Full name does not match the provided SSN"}), 400
                 user_id = user['user_id']
             else:
@@ -124,6 +127,7 @@ def create_or_update_account():
             return jsonify({"result": True, "message": "Account created or updated successfully"})
     except Exception as e:
         connection.rollback()
+        print(e)
         return jsonify({"error": str(e)}), 500
     finally:
         connection.close()
@@ -168,6 +172,37 @@ def create_loan_and_payment():
     finally:
         connection.close()
 
+
+@app.route('/get_loan_details', methods=['POST'])
+def get_loan_details():
+    data = request.get_json()
+    loan_id = data.get('loan_id')
+
+    if not loan_id:
+        return jsonify({"error": "Loan ID is required"}), 400
+
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            # Retrieve loan details
+            cursor.execute("""
+                SELECT loan_id, account_id, loan_amount, payment_sum, monthly_amount, insert_date, update_date
+                FROM loans
+                WHERE loan_id = %s
+            """, (loan_id,))
+            loan_details = cursor.fetchone()
+
+            if not loan_details:
+                return jsonify({"error": "No loan found with the provided ID"}), 404
+            # Convert to dictionary to return as JSON
+
+
+            return jsonify({"success": True, "loan_details": loan_details}), 200
+    except Exception as e:
+        connection.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        connection.close()
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
